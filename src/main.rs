@@ -21,38 +21,38 @@ enum Arithmetic {
 impl Arithmetic {
   fn to_asm(&self) -> String {
     match self {
-      Arithmetic::Add =>
-        "// add\n\
-        @SP // SP--\n\
-        M=M-1\n\
-        A=M // D = *SP\n\
-        D=M\n\
-        @SP // SP--\n\
-        M=M-1\n\
-        A=M // D = D + *SP\n\
-        A=M\n\
-        D=D+A\n\
-        @SP // *SP = D\n\
-        A=M\n\
-        M=D\n\
-        @SP // SP++\n\
-        M=M+1\n".to_string(),
-      Arithmetic::Sub =>
-        "// sub\n\
-        @SP // SP--\n\
-        M=M-1\n\
-        A=M // D = *SP\n\
-        D=M\n\
-        @SP // SP--\n\
-        M=M-1\n\
-        A=M // D = *SP - D\n\
-        A=M\n\
-        D=A-D\n\
-        @SP // *SP = D\n\
-        A=M\n\
-        M=D\n\
-        @SP // SP++\n\
-        M=M+1\n".to_string(),
+      Arithmetic::Add => "// add\n\
+                          @SP // SP--\n\
+                          M=M-1\n\
+                          A=M // D = *SP\n\
+                          D=M\n\
+                          @SP // SP--\n\
+                          M=M-1\n\
+                          A=M // D = D + *SP\n\
+                          A=M\n\
+                          D=D+A\n\
+                          @SP // *SP = D\n\
+                          A=M\n\
+                          M=D\n\
+                          @SP // SP++\n\
+                          M=M+1\n"
+        .to_string(),
+      Arithmetic::Sub => "// sub\n\
+                          @SP // SP--\n\
+                          M=M-1\n\
+                          A=M // D = *SP\n\
+                          D=M\n\
+                          @SP // SP--\n\
+                          M=M-1\n\
+                          A=M // D = *SP - D\n\
+                          A=M\n\
+                          D=A-D\n\
+                          @SP // *SP = D\n\
+                          A=M\n\
+                          M=D\n\
+                          @SP // SP++\n\
+                          M=M+1\n"
+        .to_string(),
     }
   }
 }
@@ -63,51 +63,40 @@ struct MemoryAccess {
   segment: Segment,
   index: i32,
   original: String,
+  filename: String,
 }
 
 impl MemoryAccess {
   fn to_asm(&self) -> String {
     match &self {
-      MemoryAccess {
-        command: AccessCommand::Push,
-        segment: Segment::Constant,
-        index,
-        original,
-      } => format!(
-        "// {original}\n\
-         @{i} // D = 17\n\
-         D=A\n\
-         @SP // *SP = D\n\
-         A=M\n\
-         M=D\n\
-         @SP // SP++\n\
-         M=M+1\n",
-        i = index,
-        original = original
-      ),
+      // Pop commands
       MemoryAccess {
         command: AccessCommand::Pop,
         segment: Segment::Local,
         index,
         original,
+        ..
       }
       | MemoryAccess {
         command: AccessCommand::Pop,
         segment: Segment::This,
         index,
         original,
+        ..
       }
       | MemoryAccess {
         command: AccessCommand::Pop,
         segment: Segment::That,
         index,
         original,
+        ..
       }
       | MemoryAccess {
         command: AccessCommand::Pop,
         segment: Segment::Argument,
         index,
         original,
+        ..
       } => format!(
         "// {original}\n\
          @{i} // D = i\n\
@@ -133,6 +122,7 @@ impl MemoryAccess {
         segment: Segment::Temp,
         index,
         original,
+        ..
       } => format!(
         "// {original}\n\
          @{loc} // D = i\n\
@@ -146,32 +136,92 @@ impl MemoryAccess {
          A=D-A\n\
          D=D-A\n\
          M=D\n",
-         loc = index + 5,
-         original = original,
+        loc = index + 5,
+        original = original,
+      ),
+      MemoryAccess {
+        command: AccessCommand::Pop,
+        segment: Segment::Pointer,
+        index,
+        original,
+        ..
+      } if *index == 0 || *index == 1 => format!(
+        "// {original}\n\
+        @SP // SP--\n\
+        M=M-1\n\
+        @SP // {label} = *SP\n\
+        A=M\n\
+        D=M\n\
+        @{label}\n\
+        M=D\n",
+        original = original,
+        label = if *index == 0 { "THIS" } else { "THAT" },
+      ),
+      MemoryAccess {
+        command: AccessCommand::Pop,
+        segment: Segment::Static,
+        index,
+        original,
+        filename,
+      } => format!(
+        "// {original}\n\
+        @SP // SP--\n\
+        M=M-1\n\
+        @SP // {filename}.{index} = *SP\n\
+        A=M\n\
+        D=M\n\
+        @{filename}.{index}\n\
+        M=D\n",
+        original = original,
+        filename = filename,
+        index = index,
+      ),
+      // Push Commands
+      MemoryAccess {
+        command: AccessCommand::Push,
+        segment: Segment::Constant,
+        index,
+        original,
+        ..
+      } => format!(
+        "// {original}\n\
+         @{i} // D = 17\n\
+         D=A\n\
+         @SP // *SP = D\n\
+         A=M\n\
+         M=D\n\
+         @SP // SP++\n\
+         M=M+1\n",
+        i = index,
+        original = original
       ),
       MemoryAccess {
         command: AccessCommand::Push,
         segment: Segment::Local,
         index,
         original,
+        ..
       }
       | MemoryAccess {
         command: AccessCommand::Push,
         segment: Segment::This,
         index,
         original,
+        ..
       }
       | MemoryAccess {
         command: AccessCommand::Push,
         segment: Segment::That,
         index,
         original,
+        ..
       }
       | MemoryAccess {
         command: AccessCommand::Push,
         segment: Segment::Argument,
         index,
         original,
+        ..
       } => format!(
         "// {original}\n\
          @{i} // D = i\n\
@@ -185,15 +235,16 @@ impl MemoryAccess {
          M=D\n\
          @SP // SP++\n\
          M=M+1\n",
-         i = index,
-         original = original,
-         label = self.segment.asm_label(),
+        i = index,
+        original = original,
+        label = self.segment.asm_label(),
       ),
       MemoryAccess {
         command: AccessCommand::Push,
         segment: Segment::Temp,
         index,
         original,
+        ..
       } => format!(
         "// {original}\n\
          @{loc} // D = temp\n\
@@ -203,8 +254,45 @@ impl MemoryAccess {
          M=D\n\
          @SP // SP++\n\
          M=M+1\n",
-         loc = index + 5,
-         original = original,
+        loc = index + 5,
+        original = original,
+      ),
+      MemoryAccess {
+        command: AccessCommand::Push,
+        segment: Segment::Pointer,
+        index,
+        original,
+        ..
+      } if *index == 0 || *index == 1 => format!(
+        "// {original}\n\
+        @{label} // *SP = {label}\n\
+        D=M\n\
+        @SP\n\
+        A=M\n\
+        M=D\n\
+        @SP // SP++\n\
+        M=M+1\n",
+        original = original,
+        label = if *index == 0 { "THIS" } else { "THAT" },
+      ),
+      MemoryAccess {
+        command: AccessCommand::Push,
+        segment: Segment::Static,
+        index,
+        original,
+        filename,
+      } => format!(
+        "// {original}\n\
+        @{filename}.{index} // *SP = {filename}.{index}\n\
+        D=M\n\
+        @SP\n\
+        A=M\n\
+        M=D\n\
+        @SP // SP++\n\
+        M=M+1\n",
+        original = original,
+        filename = filename,
+        index = index,
       ),
       _ => panic!(format!("Unhandled memory access command: {:?}", self)),
     }
@@ -225,6 +313,8 @@ enum Segment {
   This,
   That,
   Temp,
+  Pointer,
+  Static,
 }
 
 impl Segment {
@@ -256,24 +346,21 @@ impl Command {
     }
   }
 
-  fn memory_access(command: &str, segment: &str, id: &str) -> Result<Self, String> {
+  fn memory_access(command: &str, segment: &str, id: &str, filename: &str) -> Result<Self, String> {
     Ok(Self::MemoryAccess(MemoryAccess {
       command: command.parse()?,
       segment: segment.parse()?,
       index: id.parse().map_err(|_| format!("Error parsing {}", id))?,
       original: format!("{} {} {}", command, segment, id),
+      filename: filename.to_string(),
     }))
   }
-}
 
-impl std::str::FromStr for Command {
-  type Err = String;
-
-  fn from_str(str: &str) -> Result<Self, Self::Err> {
+  fn parse_from_str(str: &str, filename: &str) -> Result<Self, String> {
     match str.split(" ").collect::<Vec<&str>>().as_slice() {
       [""] => Ok(Command::Noop),
       command if command[0] == "//" => Ok(Command::Noop),
-      [command, memory, id] => Ok(Command::memory_access(command, memory, id)?),
+      [command, memory, id] => Ok(Command::memory_access(command, memory, id, filename)?),
       [command] => Ok(Command::arithmetic(command)?),
       _ => Err(format!("couldn't parse command {}", str)),
     }
@@ -301,6 +388,8 @@ impl std::str::FromStr for Segment {
       "this" => Ok(Self::This),
       "that" => Ok(Self::That),
       "temp" => Ok(Self::Temp),
+      "pointer" => Ok(Self::Pointer),
+      "static" => Ok(Self::Static),
       _ => Err(format!("can't parse segment {}", str)),
     }
   }
@@ -309,6 +398,7 @@ impl std::str::FromStr for Segment {
 #[derive(Debug)]
 struct VmParser {
   vm_file: Vec<String>,
+  filename: String,
 }
 
 impl VmParser {
@@ -316,7 +406,7 @@ impl VmParser {
     let vm_string = fs::read_to_string(file_name)?;
     let mut lines: Vec<String> = vm_string.lines().map(String::from).collect();
     lines.reverse();
-    Ok(VmParser { vm_file: lines })
+    Ok(VmParser { vm_file: lines, filename: file_name.to_string() })
   }
 }
 
@@ -324,8 +414,8 @@ impl Iterator for VmParser {
   type Item = Command;
   fn next(&mut self) -> Option<Self::Item> {
     let next_item = self.vm_file.pop()?;
-    let command = next_item
-      .parse::<Command>()
+    let path = Path::new(&self.filename).file_stem().unwrap();
+    let command = Command::parse_from_str(&next_item, path.to_str().unwrap())
       .expect(&format!("Error parsing command {}", next_item));
     Some(command)
   }
