@@ -16,6 +16,13 @@ enum Command {
 enum Arithmetic {
   Add,
   Sub,
+  Neg,
+  And,
+  Or,
+  Not,
+  Eq(usize),
+  Lt(usize),
+  Gt(usize),
 }
 
 impl Arithmetic {
@@ -53,6 +60,140 @@ impl Arithmetic {
                           @SP // SP++\n\
                           M=M+1\n"
         .to_string(),
+      Arithmetic::Neg => "// neg\n\
+                          @SP // SP--\n\
+                          M=M-1\n\
+                          A=M // D = *SP\n\
+                          D=M\n\
+                          D=-D\n\
+                          @SP // *SP = D\n\
+                          A=M\n\
+                          M=D\n\
+                          @SP // SP++\n\
+                          M=M+1\n"
+        .to_string(),
+      Arithmetic::And => "// and\n\
+                          @SP // SP--\n\
+                          M=M-1\n\
+                          A=M // D = *SP\n\
+                          D=M\n\
+                          @SP // SP--\n\
+                          M=M-1\n\
+                          A=M // D = *SP - D\n\
+                          A=M\n\
+                          D=D&A\n\
+                          @SP // *SP = D\n\
+                          A=M\n\
+                          M=D\n\
+                          @SP // SP++\n\
+                          M=M+1\n"
+        .to_string(),
+      Arithmetic::Or => "// or\n\
+                         @SP // SP--\n\
+                         M=M-1\n\
+                         A=M // D = *SP\n\
+                         D=M\n\
+                         @SP // SP--\n\
+                         M=M-1\n\
+                         A=M // D = *SP - D\n\
+                         A=M\n\
+                         D=D|A\n\
+                         @SP // *SP = D\n\
+                         A=M\n\
+                         M=D\n\
+                         @SP // SP++\n\
+                         M=M+1\n"
+        .to_string(),
+      Arithmetic::Not => "// not\n\
+                          @SP // SP--\n\
+                          M=M-1\n\
+                          A=M // D = *SP\n\
+                          D=M\n\
+                          D=!D\n\
+                          @SP // *SP = D\n\
+                          A=M\n\
+                          M=D\n\
+                          @SP // SP++\n\
+                          M=M+1\n"
+        .to_string(),
+      Arithmetic::Eq(i) => format!(
+        "// eq\n\
+         @SP // SP--\n\
+         M=M-1\n\
+         A=M // D = *SP\n\
+         D=M\n\
+         @SP // SP--\n\
+         M=M-1\n\
+         A=M // A = *SP\n\
+         A=M\n\
+         D=A-D\n\
+         @IfEq{i}\n\
+         D;JEQ\n\
+         D=0\n\
+         @Else{i}\n\
+         0;JMP\n\
+         (IfEq{i})\n\
+         D=-1\n\
+         (Else{i})\n\
+         @SP // *SP = D\n\
+         A=M\n\
+         M=D\n\
+         @SP // SP++\n\
+         M=M+1\n",
+        i = i,
+      ),
+      Arithmetic::Lt(i) => format!(
+        "// lt\n\
+         @SP // SP--\n\
+         M=M-1\n\
+         A=M // D = *SP\n\
+         D=M\n\
+         @SP // SP--\n\
+         M=M-1\n\
+         A=M // A = *SP\n\
+         A=M\n\
+         D=D-A\n\
+         @IfEq{i}\n\
+         D;JGT\n\
+         D=0\n\
+         @Else{i}\n\
+         0;JMP\n\
+         (IfEq{i})\n\
+         D=-1\n\
+         (Else{i})\n\
+         @SP // *SP = D\n\
+         A=M\n\
+         M=D\n\
+         @SP // SP++\n\
+         M=M+1\n",
+        i = i,
+      ),
+      Arithmetic::Gt(i) => format!(
+        "// gt\n\
+         @SP // SP--\n\
+         M=M-1\n\
+         A=M // D = *SP\n\
+         D=M\n\
+         @SP // SP--\n\
+         M=M-1\n\
+         A=M // A = *SP\n\
+         A=M\n\
+         D=D-A\n\
+         @IfEq{i}\n\
+         D;JLT\n\
+         D=0\n\
+         @Else{i}\n\
+         0;JMP\n\
+         (IfEq{i})\n\
+         D=-1\n\
+         (Else{i})\n\
+         @SP // *SP = D\n\
+         A=M\n\
+         M=D\n\
+         @SP // SP++\n\
+         M=M+1\n",
+        i = i,
+      ),
     }
   }
 }
@@ -147,13 +288,13 @@ impl MemoryAccess {
         ..
       } if *index == 0 || *index == 1 => format!(
         "// {original}\n\
-        @SP // SP--\n\
-        M=M-1\n\
-        @SP // {label} = *SP\n\
-        A=M\n\
-        D=M\n\
-        @{label}\n\
-        M=D\n",
+         @SP // SP--\n\
+         M=M-1\n\
+         @SP // {label} = *SP\n\
+         A=M\n\
+         D=M\n\
+         @{label}\n\
+         M=D\n",
         original = original,
         label = if *index == 0 { "THIS" } else { "THAT" },
       ),
@@ -165,13 +306,13 @@ impl MemoryAccess {
         filename,
       } => format!(
         "// {original}\n\
-        @SP // SP--\n\
-        M=M-1\n\
-        @SP // {filename}.{index} = *SP\n\
-        A=M\n\
-        D=M\n\
-        @{filename}.{index}\n\
-        M=D\n",
+         @SP // SP--\n\
+         M=M-1\n\
+         @SP // {filename}.{index} = *SP\n\
+         A=M\n\
+         D=M\n\
+         @{filename}.{index}\n\
+         M=D\n",
         original = original,
         filename = filename,
         index = index,
@@ -265,13 +406,13 @@ impl MemoryAccess {
         ..
       } if *index == 0 || *index == 1 => format!(
         "// {original}\n\
-        @{label} // *SP = {label}\n\
-        D=M\n\
-        @SP\n\
-        A=M\n\
-        M=D\n\
-        @SP // SP++\n\
-        M=M+1\n",
+         @{label} // *SP = {label}\n\
+         D=M\n\
+         @SP\n\
+         A=M\n\
+         M=D\n\
+         @SP // SP++\n\
+         M=M+1\n",
         original = original,
         label = if *index == 0 { "THIS" } else { "THAT" },
       ),
@@ -283,13 +424,13 @@ impl MemoryAccess {
         filename,
       } => format!(
         "// {original}\n\
-        @{filename}.{index} // *SP = {filename}.{index}\n\
-        D=M\n\
-        @SP\n\
-        A=M\n\
-        M=D\n\
-        @SP // SP++\n\
-        M=M+1\n",
+         @{filename}.{index} // *SP = {filename}.{index}\n\
+         D=M\n\
+         @SP\n\
+         A=M\n\
+         M=D\n\
+         @SP // SP++\n\
+         M=M+1\n",
         original = original,
         filename = filename,
         index = index,
@@ -338,10 +479,17 @@ impl Command {
     }
   }
 
-  fn arithmetic(command: &str) -> Result<Self, String> {
+  fn arithmetic(command: &str, i: usize) -> Result<Self, String> {
     match command {
       "add" => Ok(Self::Arithmetic(Arithmetic::Add)),
       "sub" => Ok(Self::Arithmetic(Arithmetic::Sub)),
+      "neg" => Ok(Self::Arithmetic(Arithmetic::Neg)),
+      "and" => Ok(Self::Arithmetic(Arithmetic::And)),
+      "or" => Ok(Self::Arithmetic(Arithmetic::Or)),
+      "not" => Ok(Self::Arithmetic(Arithmetic::Not)),
+      "eq" => Ok(Self::Arithmetic(Arithmetic::Eq(i))),
+      "lt" => Ok(Self::Arithmetic(Arithmetic::Lt(i))),
+      "gt" => Ok(Self::Arithmetic(Arithmetic::Gt(i))),
       _ => Err(format!("unknown arithmetic command {}", command)),
     }
   }
@@ -356,12 +504,12 @@ impl Command {
     }))
   }
 
-  fn parse_from_str(str: &str, filename: &str) -> Result<Self, String> {
+  fn parse_from_str((i, str): &(usize, String), filename: &str) -> Result<Self, String> {
     match str.split(" ").collect::<Vec<&str>>().as_slice() {
       [""] => Ok(Command::Noop),
       command if command[0] == "//" => Ok(Command::Noop),
       [command, memory, id] => Ok(Command::memory_access(command, memory, id, filename)?),
-      [command] => Ok(Command::arithmetic(command)?),
+      [command] => Ok(Command::arithmetic(command, *i)?),
       _ => Err(format!("couldn't parse command {}", str)),
     }
   }
@@ -397,16 +545,19 @@ impl std::str::FromStr for Segment {
 
 #[derive(Debug)]
 struct VmParser {
-  vm_file: Vec<String>,
+  vm_file: Vec<(usize, String)>,
   filename: String,
 }
 
 impl VmParser {
   fn new(file_name: &str) -> Result<Self, Error> {
     let vm_string = fs::read_to_string(file_name)?;
-    let mut lines: Vec<String> = vm_string.lines().map(String::from).collect();
+    let mut lines: Vec<(usize, String)> = vm_string.lines().map(String::from).enumerate().collect();
     lines.reverse();
-    Ok(VmParser { vm_file: lines, filename: file_name.to_string() })
+    Ok(VmParser {
+      vm_file: lines,
+      filename: file_name.to_string(),
+    })
   }
 }
 
@@ -416,7 +567,7 @@ impl Iterator for VmParser {
     let next_item = self.vm_file.pop()?;
     let path = Path::new(&self.filename).file_stem().unwrap();
     let command = Command::parse_from_str(&next_item, path.to_str().unwrap())
-      .expect(&format!("Error parsing command {}", next_item));
+      .expect(&format!("Error parsing command {}", next_item.1));
     Some(command)
   }
 }
