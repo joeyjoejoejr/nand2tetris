@@ -94,13 +94,13 @@ struct VmParser {
 }
 
 impl VmParser {
-  fn new(file_name: &str) -> Result<Self, Error> {
-    let vm_string = fs::read_to_string(file_name)?;
+  fn new(path: &std::path::PathBuf) -> Result<Self, Error> {
+    let vm_string = fs::read_to_string(path)?;
     let mut lines: Vec<(usize, String)> = vm_string.lines().map(String::from).enumerate().collect();
     lines.reverse();
     Ok(VmParser {
       vm_file: lines,
-      filename: file_name.to_string(),
+      filename: path.to_str().unwrap().to_string(),
     })
   }
 }
@@ -127,11 +127,13 @@ impl AsmWriter {
     Ok(AsmWriter { file: file })
   }
 
-  fn write(&mut self, parser: &mut VmParser) -> Result<(), Error> {
-    loop {
-      match parser.next() {
-        Some(command) => write!(self.file, "{}", command.to_asm())?,
-        None => break,
+  fn write(&mut self, parsers: Vec<VmParser>) -> Result<(), Error> {
+    for mut parser in parsers {
+      loop {
+        match parser.next() {
+          Some(command) => write!(self.file, "{}", command.to_asm())?,
+          None => break,
+        }
       }
     }
     Ok(())
@@ -140,9 +142,23 @@ impl AsmWriter {
 
 fn main() {
   let args: Vec<String> = env::args().collect();
-  let file_name = &args.get(1).expect("USAGE: vm <filename>");
-  let mut parser =
-    VmParser::new(file_name).expect(&format!("Cannot open file named {}", file_name));
-  let mut asm_writer = AsmWriter::new(file_name).expect("Cannot open asm file for writing");
-  asm_writer.write(&mut parser).expect("Error writing file.");
+  let path = &args.get(1).expect("USAGE: vm <filename|directory>");
+  let path = Path::new(path);
+  let parsers: Vec<VmParser> = if path.is_dir() {
+    fs::read_dir(path)
+      .expect("Not a directory")
+      .map(|path| {
+        let path = &path.expect("Invalid path").path();
+        VmParser::new(path).expect(&format!("Cannot open file {}", path.to_str().unwrap()))
+      })
+      .collect()
+  } else {
+    vec![VmParser::new(&path.to_path_buf()).expect(&format!(
+      "Cannot open file named {}",
+      path.to_str().unwrap()
+    ))]
+  };
+  let mut asm_writer =
+    AsmWriter::new(path.to_str().unwrap()).expect("Cannot open asm file for writing");
+  asm_writer.write(parsers).expect("Error writing file.");
 }
