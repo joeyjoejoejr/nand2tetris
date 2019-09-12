@@ -6,14 +6,18 @@ use std::path::Path;
 use std::result::Result;
 
 mod arithmetic;
+mod branching;
 mod memory_access;
+
 use arithmetic::Arithmetic;
+use branching::Branching;
 use memory_access::MemoryAccess;
 
 #[derive(Debug)]
 enum Command {
   Arithmetic(Arithmetic),
   MemoryAccess(MemoryAccess),
+  Branching(Branching),
   Noop,
 }
 
@@ -21,6 +25,7 @@ impl Command {
   fn to_asm(&self) -> String {
     match self {
       Self::Arithmetic(command) => command.to_asm(),
+      Self::Branching(command) => command.to_asm(),
       Self::MemoryAccess(command) => command.to_asm(),
       Self::Noop => "".to_string(),
     }
@@ -41,6 +46,15 @@ impl Command {
     }
   }
 
+  fn branching(command: &str, label: &str) -> Result<Self, String> {
+    match command {
+      "goto" => Ok(Self::Branching(Branching::Goto(label.to_string()))),
+      "if-goto" => Ok(Self::Branching(Branching::IfGoto(label.to_string()))),
+      "label" => Ok(Self::Branching(Branching::Label(label.to_string()))),
+      _ => Err(format!("unkown branching command {}", command)),
+    }
+  }
+
   fn memory_access(command: &str, segment: &str, id: &str, filename: &str) -> Result<Self, String> {
     Ok(Self::MemoryAccess(MemoryAccess {
       command: command.parse()?,
@@ -52,12 +66,23 @@ impl Command {
   }
 
   fn parse_from_str((i, str): &(usize, String), filename: &str) -> Result<Self, String> {
-    match str.split(" ").collect::<Vec<&str>>().as_slice() {
-      [""] => Ok(Command::Noop),
+    match str
+      .split("//")
+      .nth(0)
+      .unwrap()
+      .split_whitespace()
+      .collect::<Vec<&str>>()
+      .as_slice()
+    {
+      [] => Ok(Command::Noop),
       command if command[0] == "//" => Ok(Command::Noop),
       [command, memory, id] => Ok(Command::memory_access(command, memory, id, filename)?),
+      [command, label] => Ok(Command::branching(command, label)?),
       [command] => Ok(Command::arithmetic(command, *i)?),
-      _ => Err(format!("couldn't parse command {}", str)),
+      rest => {
+        println!("{:?}", rest);
+        Err(format!("couldn't parse command {}", str))
+      }
     }
   }
 }
