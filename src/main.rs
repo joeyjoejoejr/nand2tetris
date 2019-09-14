@@ -7,10 +7,12 @@ use std::result::Result;
 
 mod arithmetic;
 mod branching;
+mod function;
 mod memory_access;
 
 use arithmetic::Arithmetic;
 use branching::Branching;
+use function::Function;
 use memory_access::MemoryAccess;
 
 #[derive(Debug)]
@@ -18,6 +20,7 @@ enum Command {
   Arithmetic(Arithmetic),
   MemoryAccess(MemoryAccess),
   Branching(Branching),
+  Function(Function),
   Noop,
 }
 
@@ -27,6 +30,7 @@ impl Command {
       Self::Arithmetic(command) => command.to_asm(),
       Self::Branching(command) => command.to_asm(),
       Self::MemoryAccess(command) => command.to_asm(),
+      Self::Function(command) => command.to_asm(),
       Self::Noop => "".to_string(),
     }
   }
@@ -65,6 +69,25 @@ impl Command {
     }))
   }
 
+  fn fn_decl(name: &str, nlocals: &str) -> Result<Self, String> {
+    Ok(Self::Function(Function::Decl {
+      name: name.to_string(),
+      nlocals: nlocals
+        .parse()
+        .map_err(|_| format!("Error parsing {}", nlocals))?,
+    }))
+  }
+
+  fn fn_call(name: &str, nargs: &str, index: usize) -> Result<Self, String> {
+    Ok(Self::Function(Function::Call {
+      name: name.to_string(),
+      nargs: nargs
+        .parse()
+        .map_err(|_| format!("Error parsing {}", nargs))?,
+      index,
+    }))
+  }
+
   fn parse_from_str((i, str): &(usize, String), filename: &str) -> Result<Self, String> {
     match str
       .split("//")
@@ -76,6 +99,9 @@ impl Command {
     {
       [] => Ok(Command::Noop),
       command if command[0] == "//" => Ok(Command::Noop),
+      ["function", name, nlocals] => Ok(Command::fn_decl(name, nlocals)?),
+      ["call", name, nargs] => Ok(Command::fn_call(name, nargs, *i)?),
+      ["return"] => Ok(Command::Function(Function::Return)),
       [command, memory, id] => Ok(Command::memory_access(command, memory, id, filename)?),
       [command, label] => Ok(Command::branching(command, label)?),
       [command] => Ok(Command::arithmetic(command, *i)?),
@@ -121,13 +147,38 @@ struct AsmWriter {
 }
 
 impl AsmWriter {
-  fn new(file_name: &str) -> Result<Self, Error> {
-    let path = Path::new(file_name).with_extension("asm");
+  fn new(path: &Path) -> Result<Self, Error> {
+    let path = if path.is_dir() {
+      let name = path.file_name().expect("invalid direcotry name");
+      path.join(name).with_extension("asm")
+    } else {
+      path.with_extension("asm")
+    };
     let file = fs::File::create(path)?;
     Ok(AsmWriter { file: file })
   }
 
   fn write(&mut self, parsers: Vec<VmParser>) -> Result<(), Error> {
+    if parsers.len() > 0 {
+      write!(
+        self.file,
+        "//Initialize\n\
+         @256 // SP = 256\n\
+         D=A\n\
+         @SP\n\
+         M=D\n"
+      )?;
+      write!(
+        self.file,
+        "{}",
+        Command::Function(Function::Call {
+          name: "Sys.init".to_string(),
+          index: 0,
+          nargs: 0
+        })
+        .to_asm()
+      )?;
+    }
     for mut parser in parsers {
       loop {
         match parser.next() {
@@ -147,9 +198,14 @@ fn main() {
   let parsers: Vec<VmParser> = if path.is_dir() {
     fs::read_dir(path)
       .expect("Not a directory")
-      .map(|path| {
+      .filter_map(|path| {
         let path = &path.expect("Invalid path").path();
-        VmParser::new(path).expect(&format!("Cannot open file {}", path.to_str().unwrap()))
+        if let Some("vm") = path.extension().and_then(|str| str.to_str()) {
+          return Some(
+            VmParser::new(path).expect(&format!("Cannot open file {}", path.to_str().unwrap())),
+          );
+        }
+        None
       })
       .collect()
   } else {
@@ -158,7 +214,6 @@ fn main() {
       path.to_str().unwrap()
     ))]
   };
-  let mut asm_writer =
-    AsmWriter::new(path.to_str().unwrap()).expect("Cannot open asm file for writing");
+  let mut asm_writer = AsmWriter::new(path).expect("Cannot open asm file for writing");
   asm_writer.write(parsers).expect("Error writing file.");
 }
